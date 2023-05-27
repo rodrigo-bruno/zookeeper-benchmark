@@ -4,6 +4,8 @@ import java.net.ConnectException;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.apache.zookeeper.data.Stat;
 
 import com.netflix.curator.framework.CuratorFramework;
@@ -23,7 +25,7 @@ public class DynamicZooKeeperBenchmark {
 
     private static String data = "";
 
-    private static volatile boolean finish = false;
+    private static AtomicBoolean finish = new AtomicBoolean(false);
 
     static {
         for (int i = 0; i < 20; i++) { // 100 bytes of important data
@@ -89,7 +91,7 @@ public class DynamicZooKeeperBenchmark {
 
         @Override
         public void run() {
-            while (!finish) {
+            while (!finish.get()) {
                 try {
                     System.out.println(String.format("[worker=%s server=%s req=%s] before", id, servers.get(id), totalOps));
                     client.getData().forPath(path);
@@ -135,7 +137,7 @@ public class DynamicZooKeeperBenchmark {
             System.out.println(String.format("[ time ops/s %s %s ]", timeMS, ops * 10));
         }
 
-        finish = true;
+        finish.set(true);
 
         for (Thread t : threads) {
             t.join();
