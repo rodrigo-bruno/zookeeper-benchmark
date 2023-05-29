@@ -4,8 +4,6 @@ import java.net.ConnectException;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.apache.zookeeper.data.Stat;
 
 import com.netflix.curator.framework.CuratorFramework;
@@ -25,8 +23,6 @@ public class DynamicZooKeeperBenchmark {
 
     private static String data = "";
 
-    private static AtomicBoolean finish = new AtomicBoolean(false);
-
     static {
         for (int i = 0; i < 20; i++) { // 100 bytes of important data
             data += "!!!!!";
@@ -40,8 +36,6 @@ public class DynamicZooKeeperBenchmark {
         private final int id;
 
         private volatile int windowOps = 0;
-
-        private int totalOps = 0;
 
         private CuratorFramework setupClient(String server) throws Exception {
             CuratorFramework client = CuratorFrameworkFactory.builder()
@@ -91,13 +85,12 @@ public class DynamicZooKeeperBenchmark {
 
         @Override
         public void run() {
-            while (!finish.get()) {
+            while (true) {
                 try {
-                    System.out.println(String.format("[worker=%s server=%s req=%s] before", id, servers.get(id), totalOps));
                     client.getData().forPath(path);
-                    System.out.println(String.format("[worker=%s server=%s req=%s] after", id, servers.get(id), totalOps));
-                    totalOps++;
                     windowOps++;
+                } catch (InterruptedException ie) {
+                    break;
                 } catch (Exception e) {
                     System.out.println(String.format("[worker=%s] EXCEPTION %s", id, e.getLocalizedMessage()));
                     e.printStackTrace();
@@ -137,7 +130,9 @@ public class DynamicZooKeeperBenchmark {
             System.out.println(String.format("[ time ops/s %s %s ]", timeMS, ops * 10));
         }
 
-        finish.set(true);
+        for (Thread t : threads) {
+            t.interrupt();
+        }
 
         for (Thread t : threads) {
             t.join();
