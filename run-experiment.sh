@@ -30,8 +30,9 @@ function stop_zk {
 
 function inject_fault {
 	sleep 20
-	stop_zk $HOME/Downloads/zknode2
+	stop_zk $HOME/Downloads/zknode2 &
 	start_zk $HOME/Downloads/zknode4
+	wait
 }
 
 mvn package

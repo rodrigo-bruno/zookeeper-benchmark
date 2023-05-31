@@ -10,7 +10,6 @@ import com.netflix.curator.framework.CuratorFramework;
 import com.netflix.curator.framework.CuratorFrameworkFactory;
 import com.netflix.curator.framework.state.ConnectionState;
 import com.netflix.curator.framework.state.ConnectionStateListener;
-import com.netflix.curator.retry.RetryNTimes;
 import com.netflix.curator.retry.RetryOneTime;
 
 public class DynamicZooKeeperBenchmark {
@@ -40,28 +39,30 @@ public class DynamicZooKeeperBenchmark {
         private CuratorFramework setupClient(String server) throws Exception {
             CuratorFramework client = CuratorFrameworkFactory.builder()
                     .connectString(server).namespace("/zkTest")
-                    .retryPolicy(new RetryNTimes(1000, 1000))
-                    .connectionTimeoutMs(1000).build();
+                    .retryPolicy(new RetryOneTime(1000))
+                    .connectionTimeoutMs(1000)
+                    .sessionTimeoutMs(1000).build();
             client.start();
-            client.getZookeeperClient().setRetryPolicy(new RetryOneTime(1000));
             client.getConnectionStateListenable().addListener(new ConnectionStateListener() {
                 @Override
                 public void stateChanged(CuratorFramework client, ConnectionState newState) {
                     if (newState == ConnectionState.SUSPENDED && client != null) {
-                        System.out.println(String.format("[worker=%s] Closing client %s", id, client));
+                        System.out.println(String.format("[%s worker=%s] Closing client %s", new java.util.Date(), id, client));
                         String[] replacementIPPort = replacementServer.split(":");
                         try {
                             while(true) {
                                 try (Socket ignored = new Socket(replacementIPPort[0], Integer.parseInt(replacementIPPort[1]))) {
                                     break;
                                 } catch (ConnectException | UnknownHostException e) {
-                                    Thread.sleep(50);
+                                    System.out.println(String.format("[%s worker=%s] FAILED attempt to connect to replacement server", new java.util.Date(), id));
+                                    Thread.sleep(100);
                                 }
                             }
-                            Worker.this.client.close();
+                            CuratorFramework oldclient = Worker.this.client;
                             Worker.this.client = setupClient(replacementServer);
+                            oldclient.close();
                         } catch (Exception e) {
-                            System.out.println(String.format("[worker=%s] EXCEPTION %s", id, e.getLocalizedMessage()));
+                            System.out.println(String.format("[%s worker=%s] EXCEPTION %s", new java.util.Date(), id, e.getLocalizedMessage()));
                             e.printStackTrace();
                         }
 
@@ -74,7 +75,7 @@ public class DynamicZooKeeperBenchmark {
                 client.create().forPath(path, data.getBytes());
             }
 
-            System.out.println(String.format("[worker=%s] Adding server %s client %s", id, server, client));
+            System.out.println(String.format("[%s worker=%s] Adding server %s client %s", new java.util.Date(), id, server, client));
             return client;
         }
 
@@ -92,11 +93,16 @@ public class DynamicZooKeeperBenchmark {
                 } catch (InterruptedException ie) {
                     break;
                 } catch (Exception e) {
-                    System.out.println(String.format("[worker=%s] EXCEPTION %s", id, e.getLocalizedMessage()));
+                    System.out.println(String.format("[%s worker=%s] EXCEPTION %s", new java.util.Date(), id, e.getLocalizedMessage()));
                     e.printStackTrace();
+                    try {
+                        Thread.sleep(100);
+                    } catch (InterruptedException e1) {
+                        e1.printStackTrace();
+                    }
                 }
             }
-            System.out.println(String.format("[%s] Done!", id));
+            System.out.println(String.format("[%s %s] Done!", new java.util.Date(), id));
         }
     }
 
